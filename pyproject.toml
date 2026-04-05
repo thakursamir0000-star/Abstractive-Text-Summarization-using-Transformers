@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "thakursamir0000", email = "thakursamir0000@users.noreply.github.com"}
 ]
 keywords = ["summarization", "nlp", "transformers", "bart", "streamlit"]
 classifiers = [
@@ -27,7 +27,7 @@ classifiers = [
 dependencies = [
     "torch>=2.0.0",
     "transformers>=4.30.0",
-    "streamlit>=1.20.0",
+    "streamlit>=1.28.0",
     "python-dotenv>=1.0.0",
 ]
 
@@ -41,10 +41,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/text-summarization"
-Documentation = "https://github.com/yourusername/text-summarization#readme"
-Repository = "https://github.com/yourusername/text-summarization"
-Issues = "https://github.com/yourusername/text-summarization/issues"
+Homepage = "https://github.com/thakursamir0000/Abstractive-Text-Summarization-using-Transformers"
+Documentation = "https://github.com/thakursamir0000/Abstractive-Text-Summarization-using-Transformers#readme"
+Repository = "https://github.com/thakursamir0000/Abstractive-Text-Summarization-using-Transformers"
+Issues = "https://github.com/thakursamir0000/Abstractive-Text-Summarization-using-Transformers/issues"
 
 [tool.black]
 line-length = 88

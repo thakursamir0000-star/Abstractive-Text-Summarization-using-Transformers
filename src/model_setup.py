@@ -19,13 +19,16 @@ def setup_model(model_path: str = None) -> str:
     if model_path is None:
         model_path = os.getenv("MODEL_PATH", "facebook/bart-large-cnn")
     
-    # For HF Hub models (contains "/" or doesn't look like a local path)
-    if "/" in model_path:
-        logger.info(f"✓ Using Hugging Face model: {model_path}")
-        return model_path
+    from pathlib import Path
+    local_path = Path(model_path)
+
+    # Check if it's a real local directory with model files
+    if local_path.exists() and local_path.is_dir():
+        logger.info(f"✓ Using local fine-tuned model: {model_path}")
+        return str(local_path)
     
-    # For local paths - just return as is
-    logger.info(f"✓ Using model from: {model_path}")
+    # Otherwise treat as a Hugging Face Hub model ID (e.g. "facebook/bart-large-cnn")
+    logger.info(f"✓ Using Hugging Face Hub model: {model_path}")
     return model_path
 
 

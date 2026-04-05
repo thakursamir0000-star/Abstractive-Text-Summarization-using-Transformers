@@ -3,12 +3,19 @@
 import os
 from pathlib import Path
 import logging
+from dotenv import load_dotenv
+
+# Load .env file so all os.getenv() calls pick up the values
+load_dotenv()
 
 # Get the root directory
 ROOT_DIR = Path(__file__).parent.parent
 
 # Model configuration
-MODEL_PATH = os.getenv("MODEL_PATH", str(ROOT_DIR / "fine_tuned_bart_model"))
+# Prefer the local fine-tuned model when it exists, otherwise fall back to HF Hub
+_local_model = ROOT_DIR / "fine_tuned_bart_model"
+_default_model = str(_local_model) if _local_model.exists() else "facebook/bart-large-cnn"
+MODEL_PATH = os.getenv("MODEL_PATH", _default_model)
 MAX_INPUT_LENGTH = int(os.getenv("MAX_INPUT_LENGTH", 1024))
 MAX_SUMMARY_LENGTH = int(os.getenv("MAX_SUMMARY_LENGTH", 150))
 MIN_SUMMARY_LENGTH = int(os.getenv("MIN_SUMMARY_LENGTH", 40))

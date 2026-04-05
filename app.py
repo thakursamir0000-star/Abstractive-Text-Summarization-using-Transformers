@@ -24,6 +24,12 @@ except ImportError as e:
 logger = get_logger(__name__)
 
 # ============================================
+# SESSION STATE INITIALIZATION
+# ============================================
+if "input_text" not in st.session_state:
+    st.session_state["input_text"] = ""
+
+# ============================================
 # PAGE CONFIGURATION
 # ============================================
 st.set_page_config(
@@ -241,7 +247,7 @@ with st.sidebar:
     
     show_stats = st.checkbox("Show detailed statistics", value=True)
     show_tips = st.checkbox("Show tips & tricks", value=True)
-    
+
     st.markdown("---")
     st.markdown("### 📊 Model Status")
     
@@ -263,6 +269,10 @@ with st.sidebar:
         • Works best with articles and reports
         """)
 
+# Expose sidebar settings at module scope so main content area can use them
+_show_stats = show_stats
+_show_tips = show_tips
+
 # ============================================
 # MAIN CONTENT AREA
 # ============================================
@@ -283,6 +293,7 @@ with col1:
         height=350,
         placeholder="📄 Enter the text you want to summarize... (minimum 50 characters)",
         label_visibility="collapsed",
+        key="input_text",
     )
     
     if text_input.strip():
@@ -323,7 +334,7 @@ with col2:
         )
     
     if clear_btn:
-        text_input = ""
+        st.session_state["input_text"] = ""
         st.rerun()
     
     st.markdown('</div>', unsafe_allow_html=True)
@@ -363,7 +374,7 @@ if summarize_btn:
                 """, unsafe_allow_html=True)
 
                 # Statistics
-                if show_stats:
+                if _show_stats:
                     st.markdown("---")
                     st.markdown("<h4>📊 Summary Statistics</h4>", unsafe_allow_html=True)
                     
@@ -392,9 +403,10 @@ if summarize_btn:
                         )
                     
                     with stat_cols[2]:
+                        reduction = (1 - summary_length / original_length) * 100
                         st.metric(
-                            "📉 Compressed",
-                            f"{compression:.1f}%",
+                            "📉 Reduction",
+                            f"{reduction:.1f}%",
                             f"Save ~{time_saved} min"
                         )
 
@@ -413,7 +425,19 @@ if summarize_btn:
                     
                     with col_copy:
                         if st.button("📋 Copy to Clipboard", use_container_width=True):
-                            st.success("Copied! (Use Ctrl+V to paste)")
+                            # Use JavaScript to copy text to clipboard
+                            escaped = result.replace('`', '\\`').replace('\\', '\\\\')
+                            st.components.v1.html(
+                                f"""
+                                <script>
+                                navigator.clipboard.writeText(`{escaped}`)
+                                  .then(() => {{}})
+                                  .catch(err => console.error('Copy failed:', err));
+                                </script>
+                                """,
+                                height=0,
+                            )
+                            st.success("✅ Copied to clipboard!")
 
             else:
                 # Error message
