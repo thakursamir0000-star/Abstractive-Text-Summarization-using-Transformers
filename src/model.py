@@ -51,15 +51,30 @@ class SummarizationModel:
             # Get model path (HF Hub ID or local path)
             model_path = setup_model(MODEL_PATH)
             logger.info(f"Loading model: {model_path}")
-            
-            self.tokenizer = AutoTokenizer.from_pretrained(model_path)
-            self.model = AutoModelForSeq2SeqLM.from_pretrained(model_path)
-            
-            # Move to GPU if available
+
+            # Determine target device BEFORE loading to avoid the
+            # "meta tensor" crash that happens when accelerate is installed
+            # and .to(device) is called after from_pretrained().
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
-            self.model.to(self.device)
             logger.info(f"Using device: {self.device}")
-            
+
+            self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+
+            try:
+                # Preferred path: load weights straight onto the target device
+                self.model = AutoModelForSeq2SeqLM.from_pretrained(
+                    model_path,
+                    device_map={"": self.device},
+                )
+            except (ValueError, ImportError):
+                # Fallback when accelerate is not installed:
+                # low_cpu_mem_usage=False prevents meta-tensor initialisation
+                self.model = AutoModelForSeq2SeqLM.from_pretrained(
+                    model_path,
+                    low_cpu_mem_usage=False,
+                )
+                self.model.to(self.device)
+
         except Exception as e:
             logger.error(f"Model setup failed: {e}")
             raise
@@ -153,6 +168,13 @@ def get_model() -> SummarizationModel:
     if _model is None:
         _model = SummarizationModel()
     return _model
+
+
+def reset_model() -> None:
+    """Clear the cached model instance (useful when reloading after errors)."""
+    global _model
+    _model = None
+    SummarizationModel._instance = None
 
 
 def summarize(text: str) -> str:
