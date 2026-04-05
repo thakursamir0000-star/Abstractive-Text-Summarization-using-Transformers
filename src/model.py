@@ -48,32 +48,25 @@ class SummarizationModel:
     def _load_model(self) -> None:
         """Load tokenizer and model from the specified path."""
         try:
-            # Get model path (HF Hub ID or local path)
             model_path = setup_model(MODEL_PATH)
             logger.info(f"Loading model: {model_path}")
 
-            # Determine target device BEFORE loading to avoid the
-            # "meta tensor" crash that happens when accelerate is installed
-            # and .to(device) is called after from_pretrained().
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
             logger.info(f"Using device: {self.device}")
 
             self.tokenizer = AutoTokenizer.from_pretrained(model_path)
 
-            try:
-                # Preferred path: load weights straight onto the target device
-                self.model = AutoModelForSeq2SeqLM.from_pretrained(
-                    model_path,
-                    device_map={"": self.device},
-                )
-            except (ValueError, ImportError):
-                # Fallback when accelerate is not installed:
-                # low_cpu_mem_usage=False prevents meta-tensor initialisation
-                self.model = AutoModelForSeq2SeqLM.from_pretrained(
-                    model_path,
-                    low_cpu_mem_usage=False,
-                )
-                self.model.to(self.device)
+            # Explicitly set low_cpu_mem_usage=False to prevent PyTorch from
+            # using meta tensors. Meta tensors are zero-memory placeholders
+            # that cannot be moved to a real device with .to(), causing:
+            # "Cannot copy out of meta tensor; no data!"
+            # This happens when 'accelerate' is installed alongside transformers.
+            self.model = AutoModelForSeq2SeqLM.from_pretrained(
+                model_path,
+                low_cpu_mem_usage=False,
+            )
+            self.model.to(self.device)
+            logger.info("Model loaded successfully")
 
         except Exception as e:
             logger.error(f"Model setup failed: {e}")

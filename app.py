@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 try:
-    from src.model import summarize, get_model
+    from src.model import summarize, get_model, reset_model
     from src.config import (
         APP_TITLE,
         MIN_TEXT_LENGTH,
@@ -257,7 +257,10 @@ with st.sidebar:
         st.success("✅ Model Ready", icon="✅")
         st.caption("BART Large CNN - Ready to summarize")
     except Exception as e:
-        st.error(f"❌ Model Error: {str(e)}", icon="❌")
+        st.error(f"❌ Model Error: {str(e)[:200]}", icon="❌")
+        if st.button("🔁 Reload Model", use_container_width=True):
+            reset_model()
+            st.rerun()
     
     st.markdown("---")
     st.markdown("### 💡 Tips")
