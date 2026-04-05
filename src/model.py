@@ -51,18 +51,18 @@ class SummarizationModel:
             # Get model path (HF Hub ID or local path)
             model_path = setup_model(MODEL_PATH)
             logger.info(f"Loading model: {model_path}")
+            
+            self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+            self.model = AutoModelForSeq2SeqLM.from_pretrained(model_path)
+            
+            # Move to GPU if available
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+            self.model.to(self.device)
+            logger.info(f"Using device: {self.device}")
+            
         except Exception as e:
             logger.error(f"Model setup failed: {e}")
             raise
-
-        try:
-            self.tokenizer = AutoTokenizer.from_pretrained(model_path)
-            self.model = AutoModelForSeq2SeqLM.from_pretrained(model_path)
-        
-        # Move to GPU if available
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model.to(self.device)
-        logger.info(f"Using device: {self.device}")
 
     def validate_input(self, text: str) -> tuple[bool, Optional[str]]:
         """
