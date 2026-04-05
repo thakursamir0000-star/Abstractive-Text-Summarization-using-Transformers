@@ -1,11 +1,9 @@
 ---
-title: Text Summarizer Pro
+title: Bart Summarizer Project
 emoji: ✨
 colorFrom: purple
 colorTo: blue
-sdk: streamlit
-sdk_version: 1.28.0
-app_file: app.py
+sdk: docker
 pinned: false
 ---
 
