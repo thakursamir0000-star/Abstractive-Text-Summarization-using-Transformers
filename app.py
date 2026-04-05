@@ -1,17 +1,25 @@
 """Streamlit web app for text summarization."""
 
+import sys
 import logging
 import streamlit as st
 from pathlib import Path
 
-from src.model import summarize, get_model
-from src.config import (
-    APP_TITLE,
-    MIN_TEXT_LENGTH,
-    MAX_TEXT_LENGTH,
-    get_logger,
-)
-from src.utils import estimate_reading_time, truncate_text
+# Add src to path for imports
+sys.path.insert(0, str(Path(__file__).parent))
+
+try:
+    from src.model import summarize, get_model
+    from src.config import (
+        APP_TITLE,
+        MIN_TEXT_LENGTH,
+        MAX_TEXT_LENGTH,
+        get_logger,
+    )
+    from src.utils import estimate_reading_time, truncate_text
+except ImportError as e:
+    st.error(f"❌ Failed to load modules: {str(e)}")
+    st.stop()
 
 logger = get_logger(__name__)
 
