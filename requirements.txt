@@ -1,8 +1,6 @@
 # Core dependencies
+torch>=2.0.0
 transformers>=4.30.0
 streamlit>=1.28.0
 python-dotenv>=1.0.0
 huggingface-hub>=0.17.0
-
-# Note: torch is pre-installed on Streamlit Cloud
-# For local development, install: pip install torch>=2.0.0
