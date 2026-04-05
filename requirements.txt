@@ -1,3 +1,16 @@
-transformers
-torch
-streamlit
+# Core dependencies
+torch==2.1.2
+transformers==4.36.2
+streamlit==1.30.0
+
+# Utilities
+python-dotenv==1.0.0
+
+# Testing (optional, for development)
+pytest==7.4.3
+pytest-cov==4.1.0
+
+# Code quality (optional, for development)
+black==23.12.0
+flake8==6.1.0
+mypy==1.7.1
