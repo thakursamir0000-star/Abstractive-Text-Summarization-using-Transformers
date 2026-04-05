@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  summarizer:
+    build: .
+    ports:
+      - "8501:8501"
+    environment:
+      - MODEL_PATH=facebook/bart-large-cnn
+      - APP_TITLE=Text Summarization using BART
+      - DEBUG_MODE=false
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./fine_tuned_bart_model:/app/fine_tuned_bart_model
+    # For GPU support, uncomment:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]

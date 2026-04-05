@@ -15,6 +15,7 @@ from src.config import (
     NUM_BEAMS,
     get_logger,
 )
+from src.model_setup import setup_model
 
 logger = get_logger(__name__)
 
@@ -46,17 +47,16 @@ class SummarizationModel:
 
     def _load_model(self) -> None:
         """Load tokenizer and model from the specified path."""
-        model_path = Path(MODEL_PATH)
-        
-        if not model_path.exists():
-            raise FileNotFoundError(
-                f"Model path does not exist: {MODEL_PATH}. "
-                "Please ensure the fine_tuned_bart_model folder is present."
-            )
+        try:
+            # Ensure model is available (downloads from HF Hub if needed)
+            model_path = setup_model(MODEL_PATH)
+        except FileNotFoundError as e:
+            logger.error(f"Model setup failed: {e}")
+            raise
 
-        logger.info(f"Loading model from {MODEL_PATH}")
-        self.tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
-        self.model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_PATH)
+        logger.info(f"Loading model from {model_path}")
+        self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+        self.model = AutoModelForSeq2SeqLM.from_pretrained(model_path)
         
         # Move to GPU if available
         self.device = "cuda" if torch.cuda.is_available() else "cpu"

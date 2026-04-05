@@ -1,16 +1,9 @@
 # Core dependencies
-torch==2.1.2
 transformers==4.36.2
-streamlit==1.30.0
+streamlit>=1.28.0
+python-dotenv>=1.0.0
+huggingface-hub>=0.17.0
 
-# Utilities
-python-dotenv==1.0.0
-
-# Testing (optional, for development)
-pytest==7.4.3
-pytest-cov==4.1.0
-
-# Code quality (optional, for development)
-black==23.12.0
-flake8==6.1.0
-mypy==1.7.1
+# Note: torch is pre-installed on Streamlit Cloud/HF Spaces
+# For local development, uncomment:
+# torch>=2.0.0
