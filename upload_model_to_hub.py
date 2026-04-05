@@ -5,7 +5,6 @@ You will be prompted to paste your HF write token.
 """
 
 import sys
-import getpass
 from pathlib import Path
 
 from huggingface_hub import login, HfApi
@@ -24,15 +23,13 @@ def main():
     print("  Hugging Face Hub — Model Upload")
     print("=" * 60)
     print()
-    print("Get your token from: https://huggingface.co/settings/tokens")
-    print("(Create a new token with 'write' permission if you don't have one)")
-    print()
-    token = getpass.getpass("Paste your HF token (input hidden): ").strip()
 
-    if not token:
-        print("❌ No token provided. Exiting.")
+    if len(sys.argv) < 2:
+        print("Usage: python upload_model_to_hub.py YOUR_HF_TOKEN")
+        print("Get token: https://huggingface.co/settings/tokens")
         sys.exit(1)
 
+    token = sys.argv[1].strip()
     login(token=token)
     print("✅ Logged in to Hugging Face Hub")
     print()
