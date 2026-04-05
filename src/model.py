@@ -48,15 +48,16 @@ class SummarizationModel:
     def _load_model(self) -> None:
         """Load tokenizer and model from the specified path."""
         try:
-            # Ensure model is available (downloads from HF Hub if needed)
+            # Get model path (HF Hub ID or local path)
             model_path = setup_model(MODEL_PATH)
-        except FileNotFoundError as e:
+            logger.info(f"Loading model: {model_path}")
+        except Exception as e:
             logger.error(f"Model setup failed: {e}")
             raise
 
-        logger.info(f"Loading model from {model_path}")
-        self.tokenizer = AutoTokenizer.from_pretrained(model_path)
-        self.model = AutoModelForSeq2SeqLM.from_pretrained(model_path)
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+            self.model = AutoModelForSeq2SeqLM.from_pretrained(model_path)
         
         # Move to GPU if available
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
