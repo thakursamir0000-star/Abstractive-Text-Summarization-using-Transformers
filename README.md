@@ -1,3 +1,14 @@
+---
+title: Text Summarizer Pro
+emoji: ✨
+colorFrom: purple
+colorTo: blue
+sdk: streamlit
+sdk_version: 1.28.0
+app_file: app.py
+pinned: false
+---
+
 # 📝 Text Summarizer Pro
 
 An AI-powered text summarization application using BART (Bidirectional and Auto-Regressive Transformers) model. Quickly summarize long articles, reports, and documents with advanced abstractive summarization.
