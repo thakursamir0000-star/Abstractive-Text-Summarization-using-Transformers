@@ -1,7 +1,7 @@
 """Text summarization model wrapper with error handling."""
 
 import logging
-from typing import Optional
+from typing import Optional, Tuple
 from pathlib import Path
 
 import torch
@@ -64,7 +64,7 @@ class SummarizationModel:
             logger.error(f"Model setup failed: {e}")
             raise
 
-    def validate_input(self, text: str) -> tuple[bool, Optional[str]]:
+    def validate_input(self, text: str) -> Tuple[bool, Optional[str]]:
         """
         Validate input text.
 
