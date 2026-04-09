@@ -11,7 +11,7 @@ pinned: false
 
 An AI-powered text summarization application using BART (Bidirectional and Auto-Regressive Transformers) model. Quickly summarize long articles, reports, and documents with advanced abstractive summarization.
 
-**Live Demo:** https://share.streamlit.io/thakursamir0000-star/text-summarization
+
 
 ---
 
