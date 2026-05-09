@@ -29,7 +29,7 @@ An AI-powered text summarization application using BART (Bidirectional and Auto-
 ## 🚀 Quick Start
 
 ### Option 1: Use Online (Easiest)
-**No installation needed!** Open the live app: https://share.streamlit.io/thakursamir0000-star/text-summarization
+**No installation needed!** Open the live app: https://huggingface.co/spaces/samirthakur345/bart_summarizer_project
 
 ### Option 2: Run Locally
 
