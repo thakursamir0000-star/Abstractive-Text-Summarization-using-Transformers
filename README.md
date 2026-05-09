@@ -11,7 +11,7 @@ pinned: false
 
 An AI-powered text summarization application using BART (Bidirectional and Auto-Regressive Transformers) model. Quickly summarize long articles, reports, and documents with advanced abstractive summarization.
 
-**Live Demo:** https://share.streamlit.io/thakursamir0000-star/text-summarization
+
 
 ---
 
@@ -29,7 +29,7 @@ An AI-powered text summarization application using BART (Bidirectional and Auto-
 ## 🚀 Quick Start
 
 ### Option 1: Use Online (Easiest)
-**No installation needed!** Open the live app: https://share.streamlit.io/thakursamir0000-star/text-summarization
+**No installation needed!** Open the live app: https://huggingface.co/spaces/samirthakur345/bart_summarizer_project
 
 ### Option 2: Run Locally
 
@@ -146,29 +146,6 @@ The app uses a public BART model by default. To customize:
 
 ---
 
-## 🌐 Deployment
-
-### Streamlit Cloud (Recommended)
-
-1. Push code to GitHub
-2. Go to https://share.streamlit.io/
-3. Connect your GitHub repository
-4. Deploy with one click!
-
-### Docker
-
-```bash
-docker build -t text-summarizer .
-docker run -p 8501:8501 text-summarizer
-```
-
-### Other Platforms
-
-- **Heroku** - Deploy from GitHub
-- **Railway.app** - Simple cloud deployment
-- **AWS/Google Cloud** - Full control & scaling
-
----
 
 ## 🐛 Troubleshooting
 
@@ -215,11 +192,7 @@ and improving decision-making processes across sectors.
 
 ---
 
-## 📝 License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
-
----
 
 ## 🤝 Contributing
 
@@ -252,14 +225,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ---
 
-## 🔗 Links
 
-- **Live App:** https://share.streamlit.io/thakursamir0000-star/text-summarization
-- **GitHub:** https://github.com/thakursamir0000-star/text-summarization
-- **BART Model:** https://huggingface.co/facebook/bart-large-cnn
-- **Streamlit Docs:** https://docs.streamlit.io/
-
----
 
 ## 📈 Performance
 
