@@ -1,11 +1,3 @@
----
-title: Bart Summarizer Project
-emoji: ✨
-colorFrom: purple
-colorTo: blue
-sdk: docker
-pinned: false
----
 
 <div align="center">
 
