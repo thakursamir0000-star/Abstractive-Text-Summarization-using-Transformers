@@ -1,52 +1,29 @@
-"""Utility functions for the summarization app."""
+"""Small helpers for the summarization app."""
 
-import re
-from typing import Optional
+import html
+
+WORDS_PER_MINUTE = 230  # typical adult silent-reading speed
 
 
-def clean_text(text: str) -> str:
+def word_count(text: str) -> int:
+    return len(text.split())
+
+
+def reading_seconds(text: str) -> float:
+    return word_count(text) / WORDS_PER_MINUTE * 60
+
+
+def format_duration(seconds: float) -> str:
+    """'45 s', '3.5 min' — honest at both ends instead of rounding to whole minutes."""
+    if seconds < 60:
+        return f"{max(1, round(seconds))} s"
+    return f"{seconds / 60:.1f} min"
+
+
+def html_text(text: str) -> str:
+    """Escape model output for st.markdown(unsafe_allow_html=True).
+
+    Escapes HTML, and dollar signs too, which Streamlit would otherwise render
+    as LaTeX ("$5 million and $3 billion").
     """
-    Clean and normalize input text.
-
-    Args:
-        text: Raw input text
-
-    Returns:
-        Cleaned text
-    """
-    # Remove extra whitespace
-    text = " ".join(text.split())
-    # Remove special characters but keep basic punctuation
-    text = re.sub(r"[^\w\s\.\,\!\?\-\'\"]", "", text)
-    return text
-
-
-def truncate_text(text: str, max_length: int) -> str:
-    """
-    Truncate text to maximum length.
-
-    Args:
-        text: Input text
-        max_length: Maximum length in characters
-
-    Returns:
-        Truncated text
-    """
-    if len(text) <= max_length:
-        return text
-    return text[:max_length].rsplit(" ", 1)[0] + "..."
-
-
-def estimate_reading_time(text: str) -> int:
-    """
-    Estimate reading time in minutes.
-
-    Args:
-        text: Input text
-
-    Returns:
-        Estimated reading time in minutes
-    """
-    words = len(text.split())
-    # Average reading speed is ~200 words per minute
-    return max(1, words // 200)
+    return html.escape(text).replace("$", "&#36;").replace("\n", "<br>")

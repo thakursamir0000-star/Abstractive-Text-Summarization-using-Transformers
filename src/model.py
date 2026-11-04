@@ -1,188 +1,162 @@
-"""Text summarization model wrapper with error handling."""
+"""BART summarizer that handles text of any length.
 
-import logging
-from typing import Optional, Tuple
-from pathlib import Path
+    from src.model import Summarizer
+    summarizer = Summarizer("facebook/bart-large-cnn")
+    result = summarizer.summarize(long_text)
+    result.text, result.parts, result.chunks
+
+Text that fits in the model's 1,024-token window is summarized in one pass.
+Longer text is split into overlapping, sentence-aligned chunks; each chunk is
+summarized ("map"), and the chunk summaries are summarized again ("reduce").
+"""
+
+from __future__ import annotations
+
+import time
+from collections.abc import Callable
+from dataclasses import dataclass, field
 
 import torch
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
+from src.chunking import chunk_text
 from src.config import (
+    CHUNK_OVERLAP_TOKENS,
+    DEFAULT_LENGTH,
+    LENGTH_PRESETS,
+    MAX_INPUT_TOKENS,
+    MAX_TEXT_CHARS,
+    MIN_TEXT_CHARS,
     MODEL_PATH,
-    MAX_INPUT_LENGTH,
-    MAX_SUMMARY_LENGTH,
-    MIN_SUMMARY_LENGTH,
     NUM_BEAMS,
     get_logger,
 )
-from src.model_setup import setup_model
 
 logger = get_logger(__name__)
 
+MAX_REDUCE_ROUNDS = 3
+Progress = Callable[[int, int], None]
 
-class SummarizationModel:
-    """BART-based text summarization model."""
 
-    _instance = None  # Singleton pattern to avoid reloading model
+@dataclass
+class Summary:
+    text: str
+    input_tokens: int
+    chunks: int = 1  # how many pieces the input was split into
+    parts: list[str] = field(default_factory=list)  # one summary per chunk (empty for one pass)
+    truncated: bool = False  # True only if the input was cut (strategy="truncate")
+    seconds: float = 0.0
 
-    def __new__(cls):
-        """Implement singleton pattern to load model only once."""
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
-        return cls._instance
 
-    def __init__(self):
-        """Initialize the model (only once due to singleton pattern)."""
-        if self._initialized:
-            return
+def validate_text(text: str) -> str:
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError("Please enter some text to summarize.")
+    text = text.strip()
+    if len(text) < MIN_TEXT_CHARS:
+        raise ValueError(f"Text must be at least {MIN_TEXT_CHARS} characters long.")
+    if len(text) > MAX_TEXT_CHARS:
+        raise ValueError(f"Text is longer than the {MAX_TEXT_CHARS:,}-character limit.")
+    return text
 
-        try:
-            self._load_model()
-            self._initialized = True
-            logger.info("Model loaded successfully")
-        except Exception as e:
-            logger.error(f"Failed to load model: {str(e)}")
-            raise
 
-    def _load_model(self) -> None:
-        """Load tokenizer and model from the specified path."""
-        try:
-            model_path = setup_model(MODEL_PATH)
-            logger.info(f"Loading model: {model_path}")
+class Summarizer:
+    def __init__(self, model_path: str = MODEL_PATH, device: str | None = None,
+                 max_input_tokens: int = MAX_INPUT_TOKENS):
+        self.model_path = model_path
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        logger.info("Loading %s on %s", model_path, self.device)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+        self.model = AutoModelForSeq2SeqLM.from_pretrained(model_path).to(self.device).eval()
+        positions = getattr(self.model.config, "max_position_embeddings", None) or max_input_tokens
+        tokenizer_limit = self.tokenizer.model_max_length if self.tokenizer.model_max_length < 1e6 else positions
+        self.max_input_tokens = min(max_input_tokens, positions, tokenizer_limit)
+        self.max_output_tokens = positions
 
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
-            logger.info(f"Using device: {self.device}")
+    @property
+    def num_parameters(self) -> int:
+        return sum(p.numel() for p in self.model.parameters())
 
-            self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+    def count_tokens(self, texts: list[str]) -> list[int]:
+        """Tokens per string, counted as they appear mid-text (after a space)."""
+        if not texts:
+            return []
+        encoded = self.tokenizer([" " + t for t in texts], add_special_tokens=False)["input_ids"]
+        return [len(ids) for ids in encoded]
 
-            # Explicitly set low_cpu_mem_usage=False to prevent PyTorch from
-            # using meta tensors. Meta tensors are zero-memory placeholders
-            # that cannot be moved to a real device with .to(), causing:
-            # "Cannot copy out of meta tensor; no data!"
-            # This happens when 'accelerate' is installed alongside transformers.
-            self.model = AutoModelForSeq2SeqLM.from_pretrained(
-                model_path,
-                low_cpu_mem_usage=False,
-            )
-            self.model.to(self.device)
-            logger.info("Model loaded successfully")
+    def fits(self, text: str) -> bool:
+        return len(self.tokenizer(text)["input_ids"]) <= self.max_input_tokens
 
-        except Exception as e:
-            logger.error(f"Model setup failed: {e}")
-            raise
+    def chunk(self, text: str) -> list[str]:
+        # Leave room for <s> and </s>, plus one token of slack for the first word.
+        budget = self.max_input_tokens - 3
+        return chunk_text(text, self.count_tokens, budget, min(CHUNK_OVERLAP_TOKENS, budget // 4))
 
-    def validate_input(self, text: str) -> Tuple[bool, Optional[str]]:
-        """
-        Validate input text.
-
-        Args:
-            text: Input text to validate
-
-        Returns:
-            Tuple of (is_valid, error_message)
-        """
-        if not text or not isinstance(text, str):
-            return False, "Input must be a non-empty text string."
-
-        text = text.strip()
-        
-        if len(text) < 50:
-            return False, "Text must be at least 50 characters long."
-        
-        if len(text) > 100000:
-            return False, "Text exceeds maximum length of 100,000 characters."
-
-        return True, None
-
-    def summarize(self, text: str) -> str:
-        """
-        Generate a summary of the input text.
-
-        Args:
-            text: Input text to summarize
-
-        Returns:
-            Generated summary
-
-        Raises:
-            ValueError: If input validation fails
-            RuntimeError: If summarization fails
-        """
-        # Validate input
-        is_valid, error_msg = self.validate_input(text)
-        if not is_valid:
-            raise ValueError(error_msg)
-
-        try:
-            text = text.strip()
-            logger.info(f"Summarizing text of length {len(text)}")
-
-            # Tokenize input
-            inputs = self.tokenizer(
-                text,
-                return_tensors="pt",
-                max_length=MAX_INPUT_LENGTH,
-                truncation=True,
-            )
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}
-
-            # Generate summary
-            with torch.no_grad():
-                summary_ids = self.model.generate(
-                    inputs["input_ids"],
-                    max_length=MAX_SUMMARY_LENGTH,
-                    min_length=MIN_SUMMARY_LENGTH,
+    def generate(self, texts: list[str], length: str = DEFAULT_LENGTH, batch_size: int | None = None,
+                 on_progress: Progress | None = None) -> list[str]:
+        """Summarize each text in one pass (inputs longer than the window are cut)."""
+        # Batching only pays off on a GPU. On CPU it was no faster, and 4 chunks
+        # x 4 beams of 1,024 tokens needed ~2 GB more and crashed PyTorch with an
+        # access violation on a 16 GB laptop.
+        batch_size = batch_size or (4 if self.device == "cuda" else 1)
+        min_len, max_len = LENGTH_PRESETS[length]
+        max_len = min(max_len, self.max_output_tokens)
+        min_len = min(min_len, max_len - 1)
+        summaries: list[str] = []
+        for start in range(0, len(texts), batch_size):
+            batch = self.tokenizer(texts[start:start + batch_size], return_tensors="pt", padding=True,
+                                   truncation=True, max_length=self.max_input_tokens).to(self.device)
+            with torch.inference_mode():
+                output = self.model.generate(
+                    **batch,  # input_ids and attention_mask, so padding is ignored
                     num_beams=NUM_BEAMS,
+                    min_length=min_len,
+                    max_length=max_len,
+                    length_penalty=2.0,
+                    no_repeat_ngram_size=3,
                     early_stopping=True,
+                    # Checkpoints saved after training often have use_cache=False,
+                    # which makes every decoding step recompute the whole prefix.
+                    use_cache=True,
                 )
+            summaries += [self.tokenizer.decode(ids, skip_special_tokens=True).strip() for ids in output]
+            if on_progress:
+                on_progress(len(summaries), len(texts))
+        return summaries
 
-            # Decode summary
-            summary = self.tokenizer.decode(summary_ids[0], skip_special_tokens=True)
-            logger.info("Summarization completed successfully")
-            
-            return summary
+    def summarize(self, text: str, length: str = DEFAULT_LENGTH, strategy: str = "chunk",
+                  on_progress: Progress | None = None) -> Summary:
+        """Summarize text of any length.
 
-        except RuntimeError as e:
-            logger.error(f"Model inference failed: {str(e)}")
-            raise RuntimeError(f"Failed to generate summary: {str(e)}")
-        except Exception as e:
-            logger.error(f"Unexpected error during summarization: {str(e)}")
-            raise
+        strategy="chunk" (default) splits long input; "truncate" cuts it at the
+        model's window, as the original app (and the standard CNN/DailyMail
+        evaluation) did.
+        """
+        if strategy not in {"chunk", "truncate"}:
+            raise ValueError(f"Unknown strategy: {strategy}")
+        text = validate_text(text)
+        flat = " ".join(text.split())
+        start = time.perf_counter()
+        input_tokens = len(self.tokenizer(flat)["input_ids"])
 
+        if input_tokens <= self.max_input_tokens or strategy == "truncate":
+            summary = self.generate([flat], length)[0]
+            return Summary(summary, input_tokens, truncated=input_tokens > self.max_input_tokens,
+                           seconds=time.perf_counter() - start)
 
-# Module-level function for backward compatibility
-_model = None
+        chunks = self.chunk(text)
+        logger.info("Input has %d tokens: summarizing %d chunks", input_tokens, len(chunks))
+        parts = self.generate(chunks, DEFAULT_LENGTH, on_progress=on_progress)
 
-
-def get_model() -> SummarizationModel:
-    """Get or initialize the summarization model."""
-    global _model
-    if _model is None:
-        _model = SummarizationModel()
-    return _model
-
-
-def reset_model() -> None:
-    """Clear the cached model instance (useful when reloading after errors)."""
-    global _model
-    _model = None
-    SummarizationModel._instance = None
-
-
-def summarize(text: str) -> str:
-    """
-    Summarize input text using the BART model.
-
-    Args:
-        text: Input text to summarize
-
-    Returns:
-        Generated summary
-
-    Raises:
-        ValueError: If input validation fails
-        RuntimeError: If summarization fails
-    """
-    model = get_model()
-    return model.summarize(text)
+        # Reduce: if the chunk summaries are still too long, summarize them in
+        # chunks again. Stop if a round does not shrink the input.
+        pieces = parts
+        for _ in range(MAX_REDUCE_ROUNDS):
+            combined = " ".join(pieces)
+            if self.fits(combined):
+                break
+            regrouped = self.chunk(combined)
+            if len(regrouped) >= len(pieces):
+                break
+            pieces = self.generate(regrouped, DEFAULT_LENGTH)
+        final = self.generate([" ".join(pieces)], length)[0]
+        return Summary(final, input_tokens, len(chunks), parts, seconds=time.perf_counter() - start)

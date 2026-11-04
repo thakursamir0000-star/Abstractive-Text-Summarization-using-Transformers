@@ -1,36 +1,51 @@
-"""Configuration management for the text summarization app."""
+"""Settings for the summarization app, read from environment variables (or .env)."""
 
+import logging
 import os
 from pathlib import Path
-import logging
+
 from dotenv import load_dotenv
 
-# Load .env file so all os.getenv() calls pick up the values
 load_dotenv()
 
-# Get the root directory
-ROOT_DIR = Path(__file__).parent.parent
+ROOT_DIR = Path(__file__).resolve().parent.parent
+LOCAL_MODEL_DIR = ROOT_DIR / "fine_tuned_bart_model"
 
-# Model configuration
-# Prefer the local fine-tuned model when it exists, otherwise fall back to HF Hub
-_local_model = ROOT_DIR / "fine_tuned_bart_model"
-_default_model = str(_local_model) if _local_model.exists() else "facebook/bart-large-cnn"
-MODEL_PATH = os.getenv("MODEL_PATH", _default_model)
-MAX_INPUT_LENGTH = int(os.getenv("MAX_INPUT_LENGTH", 1024))
-MAX_SUMMARY_LENGTH = int(os.getenv("MAX_SUMMARY_LENGTH", 150))
-MIN_SUMMARY_LENGTH = int(os.getenv("MIN_SUMMARY_LENGTH", 40))
+BASE_MODEL = "facebook/bart-large-cnn"
+FAST_MODEL = "sshleifer/distilbart-cnn-12-6"
+
+# Models offered in the app: label -> Hugging Face Hub id or local folder.
+MODEL_CHOICES = {
+    "BART large CNN (best quality)": BASE_MODEL,
+    "DistilBART CNN 12-6 (faster)": FAST_MODEL,
+}
+if LOCAL_MODEL_DIR.exists():
+    MODEL_CHOICES["Local fine-tuned BART (experiment)"] = str(LOCAL_MODEL_DIR)
+
+MODEL_PATH = os.getenv("MODEL_PATH", BASE_MODEL)
+if MODEL_PATH not in MODEL_CHOICES.values():
+    MODEL_CHOICES = {f"Custom: {MODEL_PATH}": MODEL_PATH, **MODEL_CHOICES}
+
+# Longest input the model reads in one pass; longer text is split into chunks.
+MAX_INPUT_TOKENS = int(os.getenv("MAX_INPUT_TOKENS", 1024))
+CHUNK_OVERLAP_TOKENS = int(os.getenv("CHUNK_OVERLAP_TOKENS", 64))
 NUM_BEAMS = int(os.getenv("NUM_BEAMS", 4))
 
-# App configuration
-APP_TITLE = "Text Summarization using BART"
-DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
+# Summary length presets as (min, max) tokens. "Standard" is the setting
+# bart-large-cnn was published and evaluated with.
+LENGTH_PRESETS = {
+    "Short": (20, 60),
+    "Standard": (56, 142),
+    "Detailed": (100, 220),
+}
+DEFAULT_LENGTH = "Standard"
 
-# Logging configuration
+MIN_TEXT_CHARS = 50
+MAX_TEXT_CHARS = 100_000
+
+APP_TITLE = "Text Summarizer"
+REPO_URL = "https://github.com/thakursamir0000-star/Abstractive-Text-Summarization-using-Transformers"
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-
-# Validation
-MIN_TEXT_LENGTH = 50  # Minimum characters for valid input
-MAX_TEXT_LENGTH = 100000  # Maximum characters for input
 
 
 def get_logger(name: str) -> logging.Logger:
@@ -38,10 +53,8 @@ def get_logger(name: str) -> logging.Logger:
     logger = logging.getLogger(name)
     if not logger.handlers:
         handler = logging.StreamHandler()
-        formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        )
-        handler.setFormatter(formatter)
+        handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
         logger.addHandler(handler)
         logger.setLevel(LOG_LEVEL)
+        logger.propagate = False  # avoid duplicate lines when a library configures the root logger
     return logger

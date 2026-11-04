@@ -1,19 +1,26 @@
-FROM python:3.10-slim
+FROM python:3.11-slim
 
-WORKDIR /app
+# Hugging Face Spaces runs containers as user 1000; never run as root.
+RUN useradd --create-home --uid 1000 user
+WORKDIR /home/user/app
 
-# Install dependencies
+# CPU-only PyTorch: the default CUDA build is several GB larger, and the free
+# Spaces / most servers have no GPU. requirements.txt then sees torch as installed.
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
+ && pip install --no-cache-dir -r requirements.txt
 
-# Copy app source
-COPY . .
+COPY --chown=user . .
+USER user
+
+ENV HF_HOME=/home/user/.cache/huggingface \
+    MODEL_PATH=facebook/bart-large-cnn \
+    PYTHONUNBUFFERED=1
 
 # HF Spaces uses port 7860
 EXPOSE 7860
-
-# Default to public BART model (override via Space secret MODEL_PATH)
-ENV MODEL_PATH=facebook/bart-large-cnn
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:7860/_stcore/health')"
 
 CMD ["streamlit", "run", "app.py", \
      "--server.port=7860", \

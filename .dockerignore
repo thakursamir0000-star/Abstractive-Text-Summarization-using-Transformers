@@ -1,0 +1,12 @@
+.git
+.github
+.venv
+venv
+**/__pycache__
+.pytest_cache
+.ruff_cache
+.env
+# 1.6 GB of local weights; the image downloads the model from the Hub instead
+fine_tuned_bart_model
+evaluation/results
+tests

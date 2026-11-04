@@ -1,0 +1,6 @@
+{
+  "model": "C:\\Users\\asuss\\text_sum\\fine_tuned_bart_model",
+  "parameters_m": 406.3,
+  "fp32_size_gb": 1.63,
+  "load_seconds": 3.5
+}

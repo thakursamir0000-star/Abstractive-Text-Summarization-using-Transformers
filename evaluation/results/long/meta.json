@@ -1,0 +1,6 @@
+{
+  "model": "facebook/bart-large-cnn",
+  "digests": 8,
+  "articles_per_digest": 3,
+  "input_tokens_median": 2594
+}
