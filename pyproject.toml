@@ -4,76 +4,49 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "text-summarization"
-version = "1.0.0"
-description = "Professional text summarization using fine-tuned BART model"
+version = "2.0.0"
+description = "Abstractive summarization of text of any length with BART, with a ROUGE evaluation and a Streamlit app"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = {text = "MIT"}
-authors = [
-    {name = "thakursamir0000", email = "thakursamir0000@users.noreply.github.com"}
-]
-keywords = ["summarization", "nlp", "transformers", "bart", "streamlit"]
+authors = [{name = "Samir Thakur"}]
+keywords = ["summarization", "nlp", "transformers", "bart", "rouge", "streamlit"]
 classifiers = [
-    "Development Status :: 4 - Beta",
-    "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-
 dependencies = [
-    "torch>=2.0.0",
-    "transformers>=4.30.0",
-    "streamlit>=1.28.0",
-    "python-dotenv>=1.0.0",
+    "torch>=2.2",
+    "transformers>=4.40,<6",
+    "streamlit>=1.46",
+    "python-dotenv>=1.0",
+    "huggingface-hub>=0.23",
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=7.0.0",
-    "pytest-cov>=4.0.0",
-    "black>=23.0.0",
-    "flake8>=6.0.0",
-    "mypy>=1.0.0",
-]
+dev = ["rouge_score>=0.1.2", "pandas>=2.0", "pyarrow>=14", "pytest>=8", "ruff>=0.6"]
 
 [project.urls]
-Homepage = "https://github.com/thakursamir0000/Abstractive-Text-Summarization-using-Transformers"
-Documentation = "https://github.com/thakursamir0000/Abstractive-Text-Summarization-using-Transformers#readme"
-Repository = "https://github.com/thakursamir0000/Abstractive-Text-Summarization-using-Transformers"
-Issues = "https://github.com/thakursamir0000/Abstractive-Text-Summarization-using-Transformers/issues"
+Homepage = "https://github.com/thakursamir0000-star/Abstractive-Text-Summarization-using-Transformers"
+Repository = "https://github.com/thakursamir0000-star/Abstractive-Text-Summarization-using-Transformers"
+Issues = "https://github.com/thakursamir0000-star/Abstractive-Text-Summarization-using-Transformers/issues"
 
-[tool.black]
-line-length = 88
-target-version = ['py39', 'py310', 'py311']
-include = '\.pyi?$'
-exclude = '''
-/(
-    \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | _build
-  | buck-out
-  | build
-  | dist
-)/
-'''
+[tool.setuptools]
+packages = ["src", "evaluation"]
 
-[tool.mypy]
-python_version = "3.9"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = false
-check_untyped_defs = true
-ignore_missing_imports = true
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+extend-exclude = ["fine_tuned_bart_model"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
 
 [tool.pytest.ini_options]
-minversion = "7.0"
 testpaths = ["tests"]
-python_files = ["test_*.py"]
-addopts = "-v --strict-markers --tb=short"
+pythonpath = ["."]
+addopts = "-ra --strict-markers --tb=short"
+markers = ["model: loads a tiny random BART from the Hugging Face Hub"]

@@ -1,0 +1,8 @@
+-r requirements.txt
+# Evaluation
+rouge_score>=0.1.2
+pandas>=2.0
+pyarrow>=14
+# Tests and lint
+pytest>=8
+ruff>=0.6

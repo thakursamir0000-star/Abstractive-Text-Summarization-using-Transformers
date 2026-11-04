@@ -1,0 +1,6 @@
+{
+  "model": "sshleifer/distilbart-cnn-12-6",
+  "parameters_m": 305.5,
+  "fp32_size_gb": 1.22,
+  "load_seconds": 2.0
+}

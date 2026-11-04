@@ -1,0 +1,6 @@
+{
+  "model": "facebook/bart-large-cnn",
+  "parameters_m": 406.3,
+  "fp32_size_gb": 1.63,
+  "load_seconds": 0.8
+}

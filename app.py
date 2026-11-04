@@ -1,482 +1,268 @@
-"""Streamlit web app for text summarization - Enhanced UI."""
+"""Streamlit app: summarize text of any length with BART."""
 
-import sys
-import logging
-import streamlit as st
+import hashlib
+import math
 from pathlib import Path
 
-# Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent))
+import streamlit as st
 
-try:
-    from src.model import summarize, get_model, reset_model
-    from src.config import (
-        APP_TITLE,
-        MIN_TEXT_LENGTH,
-        MAX_TEXT_LENGTH,
-        get_logger,
-    )
-    from src.utils import estimate_reading_time, truncate_text
-except ImportError as e:
-    st.error(f"❌ Failed to load modules: {str(e)}")
-    st.stop()
+from src.config import (
+    APP_TITLE,
+    DEFAULT_LENGTH,
+    LENGTH_PRESETS,
+    MAX_TEXT_CHARS,
+    MIN_TEXT_CHARS,
+    MODEL_CHOICES,
+    MODEL_PATH,
+    REPO_URL,
+    get_logger,
+)
+from src.model import Summarizer, validate_text
+from src.utils import format_duration, html_text, reading_seconds, word_count
 
+st.set_page_config(page_title=APP_TITLE, page_icon="✨", layout="wide", initial_sidebar_state="expanded")
 logger = get_logger(__name__)
 
-# ============================================
-# SESSION STATE INITIALIZATION
-# ============================================
-if "input_text" not in st.session_state:
-    st.session_state["input_text"] = ""
-
-# ============================================
-# PAGE CONFIGURATION
-# ============================================
-st.set_page_config(
-    page_title=APP_TITLE,
-    page_icon="✨",
-    layout="wide",
-    initial_sidebar_state="expanded",
+EXAMPLE = (
+    "The city council of Riverton voted on Tuesday to expand its bike-sharing scheme from 40 to "
+    "120 stations over the next two years, after a pilot that ran through the summer drew more "
+    "riders than planners had expected.\n\n"
+    "During the six-month pilot, residents and visitors made about 210,000 trips, roughly double "
+    "the council's target. Most journeys were short: the median ride lasted 11 minutes, and almost "
+    "a third started or ended at one of the four stations next to the central railway station. "
+    "Council officers said the figures suggested that many people were using the bikes to cover "
+    "the last stretch between the train and their office.\n\n"
+    "The expansion will cost an estimated 3.2 million, of which 1.9 million will come from a "
+    "national grant for low-carbon transport. The rest will be paid from parking revenue. New "
+    "stations will be placed first in the northern districts, which had no stations during the "
+    "pilot and where bus services are the least frequent.\n\n"
+    "Not everyone supports the plan. Some shop owners on the high street said the stations took "
+    "up space that had been used for deliveries, and two councillors voted against the expansion, "
+    "arguing that the money should go to repairing roads. The council said it would move three "
+    "stations away from loading bays and review the scheme again after its first full year."
 )
 
-# ============================================
-# CUSTOM CSS - ENHANCED DESIGN
-# ============================================
+
+@st.cache_resource(show_spinner=False)
+def load_summarizer(model_path: str) -> Summarizer:
+    return Summarizer(model_path)
+
+
+def text_key(text: str) -> str:
+    return hashlib.sha1(text.strip().encode("utf-8")).hexdigest()
+
+
+def clear() -> None:
+    st.session_state["input_text"] = ""
+    st.session_state.pop("result", None)
+
+
+def load_example() -> None:
+    st.session_state["input_text"] = EXAMPLE
+    st.session_state.pop("result", None)
+
+
 st.markdown("""
     <style>
-    /* Main theme colors */
-    :root {
-        --primary: #6366f1;
-        --secondary: #8b5cf6;
-        --success: #10b981;
-        --danger: #ef4444;
-        --warning: #f59e0b;
-        --info: #3b82f6;
-    }
-    
-    /* Overall styling */
-    body {
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    }
-    
-    /* Header styles */
     .main-header {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 40px 20px;
-        border-radius: 15px;
-        text-align: center;
-        margin-bottom: 30px;
-        box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        color: white; padding: 32px 20px; border-radius: 15px; text-align: center;
+        margin-bottom: 24px; box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
     }
-    
-    .main-header h1 {
-        font-size: 2.5em;
-        margin: 0;
-        font-weight: 700;
-        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
-    }
-    
-    .main-header p {
-        font-size: 1.1em;
-        margin: 10px 0 0 0;
-        opacity: 0.9;
-    }
-    
-    /* Section headers */
+    .main-header h1 { font-size: 2.3em; margin: 0; font-weight: 700; color: white; }
+    .main-header p { font-size: 1.05em; margin: 8px 0 0 0; opacity: 0.9; }
     .section-header {
-        font-size: 1.8em;
-        font-weight: 600;
-        color: #667eea;
-        margin: 20px 0 15px 0;
-        padding-bottom: 10px;
-        border-bottom: 3px solid #667eea;
+        font-size: 1.5em; font-weight: 600; color: #667eea; margin: 10px 0 12px 0;
+        padding-bottom: 8px; border-bottom: 3px solid #667eea;
     }
-    
-    /* Info boxes */
-    .info-box {
-        background: linear-gradient(135deg, #f0f4ff 0%, #f9fafb 100%);
-        border-left: 5px solid #667eea;
-        padding: 20px;
-        border-radius: 10px;
-        margin: 15px 0;
-        box-shadow: 0 2px 10px rgba(102, 126, 234, 0.1);
+    .summary-box {
+        background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%); color: #1f2937;
+        border-left: 5px solid #10b981; padding: 18px 20px; border-radius: 10px; margin: 12px 0;
+        line-height: 1.6;
     }
-    
-    /* Success box */
-    .success-box {
-        background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%);
-        border-left: 5px solid #10b981;
-        padding: 20px;
-        border-radius: 10px;
-        margin: 15px 0;
-        box-shadow: 0 2px 10px rgba(16, 185, 129, 0.1);
-    }
-    
-    .success-box h3 {
-        color: #10b981;
-        margin-top: 0;
-    }
-    
-    /* Error box */
-    .error-box {
-        background: linear-gradient(135deg, #fef2f2 0%, #fdf2f2 100%);
-        border-left: 5px solid #ef4444;
-        padding: 20px;
-        border-radius: 10px;
-        margin: 15px 0;
-        box-shadow: 0 2px 10px rgba(239, 68, 68, 0.1);
-    }
-    
-    .error-box h3 {
-        color: #ef4444;
-        margin-top: 0;
-    }
-    
-    /* Stats grid */
-    .stats-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 15px;
-        margin: 20px 0;
-    }
-    
-    .stat-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 20px;
-        border-radius: 10px;
-        text-align: center;
-        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
-    }
-    
-    .stat-card .label {
-        font-size: 0.9em;
-        opacity: 0.9;
-        margin-bottom: 8px;
-    }
-    
-    .stat-card .value {
-        font-size: 1.8em;
-        font-weight: 700;
-    }
-    
-    /* Input/Output container */
-    .container {
-        background: white;
-        padding: 20px;
-        border-radius: 10px;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-        margin: 15px 0;
-    }
-    
-    /* Button styling - already handled by Streamlit */
-    
-    /* Footer */
+    .summary-box h4 { color: #059669; margin-top: 0; }
     .footer {
-        text-align: center;
-        padding: 30px 20px;
-        color: #6b7280;
-        border-top: 2px solid #e5e7eb;
-        margin-top: 50px;
-        font-size: 0.95em;
+        text-align: center; padding: 24px 20px; color: #6b7280; border-top: 2px solid #e5e7eb;
+        margin-top: 40px; font-size: 0.95em;
     }
-    
-    .footer a {
-        color: #667eea;
-        text-decoration: none;
-        font-weight: 600;
-    }
-    
-    .footer a:hover {
-        text-decoration: underline;
-    }
-    
-    /* Loading animation */
-    .spinner {
-        display: inline-block;
-        margin-right: 5px;
-    }
-    
-    /* Background pattern */
-    .hero-section {
-        background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
-        padding: 30px;
-        border-radius: 15px;
-        margin-bottom: 30px;
-    }
+    .footer a { color: #667eea; text-decoration: none; font-weight: 600; }
     </style>
 """, unsafe_allow_html=True)
 
-# ============================================
-# HEADER SECTION
-# ============================================
 st.markdown("""
     <div class="main-header">
-        <h1>✨ Text Summarizer Pro</h1>
-        <p>Powered by advanced BART AI Model</p>
-    </div>
-""", unsafe_allow_html=True)
-
-# Hero section with description
-st.markdown("""
-    <div class="hero-section">
-        <h3>🚀 Transform Your Text in Seconds</h3>
-        <p>Paste any text and let our AI create a concise, meaningful summary. Perfect for articles, reports, and long documents!</p>
+        <h1>✨ Text Summarizer</h1>
+        <p>Abstractive summaries of articles, reports and long documents with BART</p>
     </div>
 """, unsafe_allow_html=True)
 
 # ============================================
-# SIDEBAR - INFORMATION & SETTINGS
+# SIDEBAR - SETTINGS & MODEL STATUS
 # ============================================
 with st.sidebar:
-    st.markdown("### 📚 About This App")
-    st.info("""
-    **Text Summarizer Pro** uses state-of-the-art BART (Bidirectional and Auto-Regressive Transformers) 
-    model to generate accurate, concise summaries of your text.
-    
-    ✨ **Key Features:**
-    - Abstractive summarization (generates new text)
-    - Handles up to 100,000 characters
-    - GPU-accelerated processing
-    - Smart compression ratios
-    """)
-    
-    st.markdown("---")
     st.markdown("### ⚙️ Settings")
-    
-    show_stats = st.checkbox("Show detailed statistics", value=True)
-    show_tips = st.checkbox("Show tips & tricks", value=True)
+    labels = list(MODEL_CHOICES)
+    default_label = next(label for label, path in MODEL_CHOICES.items() if path == MODEL_PATH)
+    model_label = st.selectbox(
+        "Model", labels, index=labels.index(default_label),
+        help="BART large CNN scores best; DistilBART is about half the size and faster on CPU. "
+             "See the evaluation in the README.",
+    )
+    length = st.radio(
+        "Summary length", list(LENGTH_PRESETS), index=list(LENGTH_PRESETS).index(DEFAULT_LENGTH),
+        horizontal=True,
+        help="Short: 20–60 tokens · Standard: 56–142 (the setting BART was evaluated with) · "
+             "Detailed: 100–220.",
+    )
+    show_stats = st.checkbox("Show statistics", value=True)
 
     st.markdown("---")
-    st.markdown("### 📊 Model Status")
-    
+    st.markdown("### 📊 Model")
+    summarizer = None
     try:
-        with st.spinner("Loading model..."):
-            model = get_model()
-        st.success("✅ Model Ready", icon="✅")
-        st.caption("BART Large CNN - Ready to summarize")
-    except Exception as e:
-        st.error(f"❌ Model Error: {str(e)[:200]}", icon="❌")
-        if st.button("🔁 Reload Model", use_container_width=True):
-            reset_model()
+        with st.spinner("Loading the model (the first run downloads 1–1.6 GB)..."):
+            summarizer = load_summarizer(MODEL_CHOICES[model_label])
+        st.success("Model ready", icon="✅")
+        st.caption(
+            f"`{summarizer.model_path}` · {summarizer.num_parameters / 1e6:.0f}M parameters · "
+            f"{summarizer.device.upper()}  \nReads {summarizer.max_input_tokens:,} tokens at a time; "
+            "longer text is split into parts."
+        )
+    except Exception as e:  # noqa: BLE001 - show any load failure in the UI
+        logger.exception("Model failed to load")
+        st.error(f"Could not load the model: {str(e)[:200]}", icon="❌")
+        if st.button("🔁 Retry", width="stretch"):
+            load_summarizer.clear()
             st.rerun()
-    
+
     st.markdown("---")
-    st.markdown("### 💡 Tips")
-    if show_tips:
-        st.caption("""
-        • Use clear, well-structured text
-        • Minimum 50 characters required
-        • Longer documents = better summaries
-        • Works best with articles and reports
-        """)
-
-# Expose sidebar settings at module scope so main content area can use them
-_show_stats = show_stats
-_show_tips = show_tips
+    st.markdown("### 💡 How it works")
+    st.caption(
+        "The model writes new sentences rather than copying them (abstractive summarization). "
+        "It reads about 1,024 tokens (roughly 700 words) at once, so longer text is split at "
+        "sentence boundaries, each part is summarized, and the part summaries are combined into "
+        "one. It was trained on news, so it works best on articles and reports."
+    )
 
 # ============================================
-# MAIN CONTENT AREA
+# MAIN CONTENT
 # ============================================
-
-# Input and Output sections
 col1, col2 = st.columns([1, 1], gap="large")
 
-# ============================================
-# LEFT COLUMN - INPUT
-# ============================================
 with col1:
     st.markdown('<h3 class="section-header">📝 Input Text</h3>', unsafe_allow_html=True)
-    
-    st.markdown('<div class="container">', unsafe_allow_html=True)
-    
     text_input = st.text_area(
-        "Paste your text here:",
+        "Text to summarize",
         height=350,
-        placeholder="📄 Enter the text you want to summarize... (minimum 50 characters)",
+        max_chars=MAX_TEXT_CHARS,
+        placeholder=f"Paste the text you want to summarize (at least {MIN_TEXT_CHARS} characters)...",
         label_visibility="collapsed",
         key="input_text",
     )
-    
-    if text_input.strip():
-        char_count = len(text_input)
-        st.caption(f"📊 Characters: {char_count:,} | Words: {len(text_input.split()):,}")
-        
-        # Progress bar for text length
-        max_chars = 100000
-        progress = min(char_count / max_chars, 1.0)
-        st.progress(progress)
-    
-    st.markdown('</div>', unsafe_allow_html=True)
+    button_cols = st.columns(2)
+    button_cols[0].button("📄 Load example", on_click=load_example, width="stretch")
+    button_cols[1].button("🔄 Clear", on_click=clear, width="stretch")
 
-# ============================================
-# RIGHT COLUMN - OUTPUT & CONTROLS
-# ============================================
+    if text_input.strip():
+        details = f"📊 {len(text_input):,} characters · {word_count(text_input):,} words"
+        if summarizer is not None:
+            tokens = len(summarizer.tokenizer(" ".join(text_input.split()))["input_ids"])
+            if tokens <= summarizer.max_input_tokens:
+                details += f" · {tokens:,} tokens (fits in one pass)"
+            else:
+                parts = math.ceil(tokens / (summarizer.max_input_tokens - 64))
+                details += f" · {tokens:,} tokens (will be split into about {parts} parts)"
+        st.caption(details)
+
 with col2:
     st.markdown('<h3 class="section-header">✨ Summary</h3>', unsafe_allow_html=True)
-    
-    st.markdown('<div class="container">', unsafe_allow_html=True)
-    
-    # Summarize button
-    col_btn1, col_btn2 = st.columns([2, 1])
-    
-    with col_btn1:
-        summarize_btn = st.button(
-            "🚀 Summarize Text",
-            use_container_width=True,
-            type="primary",
-            help="Click to generate summary"
-        )
-    
-    with col_btn2:
-        clear_btn = st.button(
-            "🔄 Clear",
-            use_container_width=True,
-            help="Clear all text"
-        )
-    
-    if clear_btn:
-        st.session_state["input_text"] = ""
-        st.rerun()
-    
-    st.markdown('</div>', unsafe_allow_html=True)
+    summarize_clicked = st.button(
+        "🚀 Summarize", type="primary", width="stretch", disabled=summarizer is None,
+    )
 
-# ============================================
-# SUMMARIZATION LOGIC
-# ============================================
+    if summarize_clicked:
+        try:
+            validate_text(text_input)
+        except ValueError as e:
+            st.error(str(e), icon="❌")
+        else:
+            progress = st.progress(0.0, text="Summarizing...")
 
-def validate_and_summarize(text: str) -> tuple[bool, str]:
-    """Validate and summarize text."""
-    try:
-        summary = summarize(text)
-        return True, summary
-    except ValueError as e:
-        return False, f"Input Error: {str(e)}"
-    except RuntimeError as e:
-        return False, f"Summarization Error: {str(e)}"
-    except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
-        return False, "An unexpected error occurred. Please try again."
+            def on_progress(done: int, total: int) -> None:
+                progress.progress(done / total, text=f"Summarized part {done} of {total}")
 
-# Process input
-if summarize_btn:
-    if not text_input.strip():
-        st.error("❌ Please enter some text to summarize.", icon="❌")
-    else:
-        with st.spinner("🔄 Processing your text..."):
-            success, result = validate_and_summarize(text_input)
-
-            if success:
-                # Success message
-                st.markdown(f"""
-                    <div class="success-box">
-                        <h3>✅ Summary Generated!</h3>
-                        <p>{result}</p>
-                    </div>
-                """, unsafe_allow_html=True)
-
-                # Statistics
-                if _show_stats:
-                    st.markdown("---")
-                    st.markdown("<h4>📊 Summary Statistics</h4>", unsafe_allow_html=True)
-                    
-                    original_length = len(text_input)
-                    summary_length = len(result)
-                    compression = (summary_length / original_length * 100)
-                    original_time = estimate_reading_time(text_input)
-                    summary_time = estimate_reading_time(result)
-                    time_saved = original_time - summary_time
-
-                    # Stats grid
-                    stat_cols = st.columns(3)
-                    
-                    with stat_cols[0]:
-                        st.metric(
-                            "📖 Original",
-                            f"{original_length:,} chars",
-                            f"~{original_time} min read"
-                        )
-                    
-                    with stat_cols[1]:
-                        st.metric(
-                            "✂️ Summary",
-                            f"{summary_length:,} chars",
-                            f"~{summary_time} min read"
-                        )
-                    
-                    with stat_cols[2]:
-                        reduction = (1 - summary_length / original_length) * 100
-                        st.metric(
-                            "📉 Reduction",
-                            f"{reduction:.1f}%",
-                            f"Save ~{time_saved} min"
-                        )
-
-                    # Download button
-                    st.markdown("---")
-                    col_download, col_copy = st.columns(2)
-                    
-                    with col_download:
-                        st.download_button(
-                            label="💾 Download Summary",
-                            data=result,
-                            file_name="summary.txt",
-                            mime="text/plain",
-                            use_container_width=True,
-                        )
-                    
-                    with col_copy:
-                        if st.button("📋 Copy to Clipboard", use_container_width=True):
-                            # Use JavaScript to copy text to clipboard
-                            escaped = result.replace('`', '\\`').replace('\\', '\\\\')
-                            st.components.v1.html(
-                                f"""
-                                <script>
-                                navigator.clipboard.writeText(`{escaped}`)
-                                  .then(() => {{}})
-                                  .catch(err => console.error('Copy failed:', err));
-                                </script>
-                                """,
-                                height=0,
-                            )
-                            st.success("✅ Copied to clipboard!")
-
+            try:
+                with st.spinner("Summarizing..."):
+                    result = summarizer.summarize(text_input, length=length, on_progress=on_progress)
+            except (RuntimeError, ValueError) as e:
+                logger.exception("Summarization failed")
+                st.error(f"Summarization failed: {str(e)[:300]}", icon="❌")
             else:
-                # Error message
-                st.markdown(f"""
-                    <div class="error-box">
-                        <h3>❌ Error Occurred</h3>
-                        <p>{result}</p>
-                    </div>
-                """, unsafe_allow_html=True)
+                st.session_state["result"] = {
+                    "summary": result.text,
+                    "parts": result.parts,
+                    "chunks": result.chunks,
+                    "input_tokens": result.input_tokens,
+                    "seconds": result.seconds,
+                    "source_words": word_count(text_input),
+                    "source_seconds": reading_seconds(text_input),
+                    "source_chars": len(text_input),
+                    "source_key": text_key(text_input),
+                    "model": summarizer.model_path,
+                    "length": length,
+                }
+            finally:
+                progress.empty()
 
-# ============================================
-# CHARACTER COUNT INFO
-# ============================================
-if text_input.strip():
-    chars = len(text_input)
-    is_valid_length = 50 <= chars <= 100000
-    status_emoji = "✅" if is_valid_length else "⚠️"
-    st.markdown(f"""
-        <div class="info-box">
-            {status_emoji} <strong>Text Status:</strong> {chars:,} characters
-            {' (Ready to summarize!)' if is_valid_length else ' (Needs 50-100,000 characters)'}
-        </div>
-    """, unsafe_allow_html=True)
+    # Rendered from session state, so the summary, download and copy survive reruns.
+    result = st.session_state.get("result")
+    if result:
+        if result["source_key"] != text_key(text_input):
+            st.caption("⚠️ The input has changed since this summary was made.")
+        st.markdown(
+            f'<div class="summary-box"><h4>✅ Summary</h4>{html_text(result["summary"])}</div>',
+            unsafe_allow_html=True,
+        )
+
+        if result["parts"]:
+            with st.expander(f"How this long text was summarized: {result['chunks']} parts"):
+                st.caption(
+                    f"The input had {result['input_tokens']:,} tokens, more than the model reads at "
+                    "once. Each part was summarized, then the part summaries were summarized again."
+                )
+                for i, part in enumerate(result["parts"], 1):
+                    st.markdown(f"**Part {i}.** {html_text(part)}", unsafe_allow_html=True)
+
+        if show_stats:
+            summary_words = word_count(result["summary"])
+            stat_cols = st.columns(4)
+            stat_cols[0].metric("📖 Original", f"{result['source_words']:,} words",
+                                f"{format_duration(result['source_seconds'])} read",
+                                delta_color="off")
+            stat_cols[1].metric("✂️ Summary", f"{summary_words:,} words",
+                                f"{format_duration(reading_seconds(result['summary']))} read",
+                                delta_color="off")
+            reduction = (1 - summary_words / max(result["source_words"], 1)) * 100
+            stat_cols[2].metric("📉 Shorter by", f"{reduction:.0f}%")
+            stat_cols[3].metric("⏱️ Took", format_duration(result["seconds"]))
+
+        st.download_button(
+            "💾 Download summary", data=result["summary"], file_name="summary.txt",
+            mime="text/plain", width="stretch",
+        )
+        with st.expander("📋 Copy as plain text"):
+            st.code(result["summary"], language=None, wrap_lines=True)
+    elif not summarize_clicked:
+        st.info("Paste some text, or load the example, then click **Summarize**.")
 
 # ============================================
 # FOOTER
 # ============================================
-st.markdown("---")
-st.markdown("""
+model_path = MODEL_CHOICES[model_label]
+model_link = "" if Path(model_path).exists() else f'<a href="https://huggingface.co/{model_path}">Model card</a> • '
+st.markdown(f"""
     <div class="footer">
-        <p>🚀 <strong>Text Summarizer Pro</strong> | Powered by BART AI</p>
-        <p>
-            <a href="https://huggingface.co/facebook/bart-large-cnn">Model Info</a> • 
-            <a href="https://github.com">GitHub</a> • 
-            <a href="https://streamlit.io">Built with Streamlit</a>
-        </p>
-        <p style="opacity: 0.7;">Made with ❤️ for better reading</p>
+        <p>✨ <strong>Text Summarizer</strong> · BART (Lewis et al., 2019)</p>
+        <p>{model_link}<a href="{REPO_URL}">GitHub</a> • <a href="https://streamlit.io">Built with Streamlit</a></p>
     </div>
 """, unsafe_allow_html=True)
